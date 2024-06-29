@@ -89,7 +89,7 @@ function App() {
       <Container title="XP Calculator">
         <div>
           <input placeholder="current Xp" {...currentXPInput.i} />
-          to
+          {' to '}
           <input placeholder="target level" {...targetLevelInput.i} />
           <button onClick={() => targetValue.setValue(xpNeeded + '')}>→</button>
         </div>
@@ -99,7 +99,7 @@ function App() {
       <Container title="Repetitions">
         <div>
           <input placeholder="target value" {...targetValue.i} />
-          to
+          {' to '}
           <input placeholder="perInput" {...perInput.i} />
           <button onClick={() => timesInput.setValue(times + '')}>→</button>
         </div>
@@ -109,7 +109,7 @@ function App() {
       <Container title="Time Calculator">
         <div>
           <input placeholder="duration" {...durationInput.i} />
-          *
+          {` * `}
           <input placeholder="times" {...timesInput.i} />
         </div>
         <Result>{totalTime}</Result>
