@@ -1,26 +1,18 @@
-import { useEffect, useReducer, useRef, useState } from 'react'
+import { useEffect, useReducer, useRef } from 'react'
 import styled from 'styled-components'
 import { xp } from './xp'
 import { Countdown } from './Countdown'
-import { AblyTest } from './AblyTest'
 import {
   calculateValue,
   createMasterCalculatorDispatchers,
   createMasterCalculatorReducer,
   createMasterCalculatorState,
   formatValue,
-  MasterCalculatorAction,
   MasterCalculatorState,
   outputIsBound,
   Target,
 } from './dataMaster'
 import * as Ably from 'ably'
-import {
-  AblyProvider,
-  ChannelProvider,
-  useChannel,
-  useConnectionStateListener,
-} from 'ably/react'
 
 function getClientId() {
   const cachedId = localStorage.getItem('dev-lab-clientId')
@@ -215,8 +207,6 @@ function App() {
           )
         })}
       </AppContainer>
-      <AblyTest />
-      <pre>{JSON.stringify(state, null, 2)}</pre>
     </>
   )
 }

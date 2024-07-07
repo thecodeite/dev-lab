@@ -140,7 +140,7 @@ export function createMasterCalculatorReducer(boxes: CalculatorBoxDef[]) {
   const bind = (
     state: MasterCalculatorState,
     action: Extract<MasterCalculatorAction, { n: 'bind' }>
-  ) => {
+  ): MasterCalculatorState => {
     const { box, target } = action
     const targetState = state.boxes[target.id][target.side]
     if (targetState === undefined || typeof targetState === 'string') {
@@ -178,7 +178,7 @@ export function createMasterCalculatorReducer(boxes: CalculatorBoxDef[]) {
   const dec = (
     state: MasterCalculatorState,
     action: Extract<MasterCalculatorAction, { n: 'dec' }>
-  ) => {
+  ): MasterCalculatorState => {
     const { id, value } = action
     const oldValue = state.boxes[id].leftStr
     const mod = boxes.find((box) => box.id === id)?.mod || ((a, b) => a - b)
