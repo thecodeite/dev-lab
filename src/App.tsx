@@ -1,7 +1,39 @@
-import { useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import styled from 'styled-components'
 import { xp } from './xp'
 import { Countdown } from './Countdown'
+import { AblyTest } from './AblyTest'
+import {
+  calculateValue,
+  createMasterCalculatorDispatchers,
+  createMasterCalculatorReducer,
+  createMasterCalculatorState,
+  formatValue,
+  MasterCalculatorAction,
+  MasterCalculatorState,
+  outputIsBound,
+  Target,
+} from './dataMaster'
+import * as Ably from 'ably'
+import {
+  AblyProvider,
+  ChannelProvider,
+  useChannel,
+  useConnectionStateListener,
+} from 'ably/react'
+
+function getClientId() {
+  const cachedId = localStorage.getItem('dev-lab-clientId')
+  if (typeof cachedId === 'string' && cachedId.length > 0) {
+    return cachedId
+  }
+  const newId = Math.floor(10 ** 36 * Math.random())
+    .toString(36)
+    .padStart(10, '0')
+  localStorage.setItem('dev-lab-clientId', newId)
+  return newId
+}
+const clientId = getClientId()
 
 const AppContainer = styled.div`
   display: flex;
@@ -21,15 +53,6 @@ const Result = styled.pre`
 const ButtonTray = styled.div`
   display: flex;
 `
-
-interface Target {
-  id: string
-  side: 'leftStr' | 'rightStr'
-}
-
-interface BoundTo {
-  id: string
-}
 
 interface CalculatorBoxDef {
   id: string
@@ -115,255 +138,87 @@ const boxes: CalculatorBoxDef[] = [
       }
     },
     canPlay: true,
+    mod(left) {
+      return left
+    },
   },
 ]
 
-interface MasterInterface {
-  push: (box: CalculatorBoxDef, target: Target) => void
-  bind: (box: CalculatorBoxDef, target: Target) => void
-  outputIsBound(target: Target): boolean
-  dec: (
-    prev: MasterCalculatorState,
-    id: string,
-    value: number
-  ) => MasterCalculatorState
-  play: (box: CalculatorBoxDef) => void
-  stop: (box: CalculatorBoxDef) => void
-  setLeft: (id: string, value: string) => void
-  setRight: (id: string, value: string) => void
-  calculateValue: (id: string) => number
-  calculate: (id: string) => string
-}
+const masterCalculatorReducer = createMasterCalculatorReducer(boxes)
 
-interface MasterCalculatorState {
-  [key: string]: {
-    leftStr: string | BoundTo
-    rightStr: string | BoundTo
-    intervalHandle?: number
-  }
-}
+const client = new Ably.Realtime({
+  key: 'gkzCVA.wmKFdw:FVC0SnUJ5iJ2IQj0o5UZEAc7x0tD_vtVtJvDJCDfdoo',
+})
 
-function useMasterCalculator(boxes: CalculatorBoxDef[]) {
-  const [state, setState] = useState<MasterCalculatorState>(() => {
-    return boxes
-      .map((box) => {
-        return {
-          [box.id]: {
-            leftStr: '',
-            rightStr: '',
-          },
-        }
-      })
-      .reduce((acc, item) => {
-        return { ...acc, ...item }
-      }, {} as MasterCalculatorState)
-  })
+function useRemoteDataSync() {
+  const initialState = createMasterCalculatorState(boxes)
+  const [state, dispatcher] = useReducer(masterCalculatorReducer, initialState)
+  const dispatchers = createMasterCalculatorDispatchers(dispatcher)
+  const lastDispatch = useRef('')
 
-  const master: MasterInterface = {
-    push(box: CalculatorBoxDef, target: Target) {
-      const value = master.calculateValue(box.id)
-      console.log('push', box.id, target.id, value)
-      setState((prev) => {
-        return {
-          ...prev,
-          [target.id]: {
-            ...prev[target.id],
-            [target.side]: value.toString(),
-          },
-        }
+  // const { channel } = useChannel('dev-lab', 'dispatch', (message) => {
+  //   setLastMessage(message)
+  // })
+  useEffect(() => {
+    client.channels.get('dev-lab').subscribe('dispatch', (message) => {
+      console.log('message:', message.id, message.data.state)
+      lastDispatch.current = 'remoteDataSync'
+      dispatcher({
+        n: 'remoteDataSync',
+        data: message.data.state,
       })
-    },
-    bind(box: CalculatorBoxDef, target: Target) {
-      const targetState = state[target.id][target.side]
-      if (targetState === undefined || typeof targetState === 'string') {
-        console.log('bind', box.id, target.id)
-        setState((prev) => {
-          return {
-            ...prev,
-            [target.id]: {
-              ...prev[target.id],
-              [target.side]: {
-                id: box.id,
-              },
-            },
-          }
-        })
-      } else {
-        console.log('un-bind', box.id, target.id)
-        setState((prev) => {
-          return {
-            ...prev,
-            [target.id]: {
-              ...prev[target.id],
-              [target.side]: master.calculateValue(box.id).toString(),
-            },
-          }
-        })
-      }
-    },
-    outputIsBound(target: Target) {
-      const value = state[target.id][target.side]
-      return value !== undefined && typeof value !== 'string'
-    },
-    dec(prev: MasterCalculatorState, id: string, value: number) {
-      const oldValue = prev[id].leftStr
-      const mod = boxes.find((box) => box.id === id)?.mod || ((a, b) => a - b)
-      const scale = mod(value, Number(prev[id].rightStr))
-      console.log(
-        `Setting scale to ${scale} by ${value} and ${prev[id].rightStr} using ${mod}`
-      )
+    })
+  }, [])
 
-      if (typeof oldValue !== 'string') {
-        console.log({ prev, id: oldValue.id, scale })
-        return master.dec(prev, oldValue.id, scale)
-      } else {
-        const newValue = (Number(oldValue) - scale).toString()
-        console.log(
-          `Trying to set ${id}:leftStr to ${newValue} by subtracting ${scale} from ${oldValue}`
-        )
-        return {
-          ...prev,
-          [id]: {
-            ...prev[id],
-            leftStr: newValue,
-          },
-        }
-      }
-    },
-    play(box: CalculatorBoxDef) {
-      const duration = Number(state[box.id].rightStr)
-      const handle = setInterval(() => {
-        setState((prev) => {
-          let intervalHandle = prev[box.id].intervalHandle
-          const oldValue = prev[box.id].leftStr
-          const change = 1 //Number(prev[box.id].rightStr)
-          if (typeof oldValue !== 'string') {
-            return master.dec(prev, oldValue.id, change)
-          } else {
-            const newValue = Number(prev[box.id].leftStr) - change
-            if (newValue <= 0) {
-              clearInterval(intervalHandle)
-              intervalHandle = undefined
-            }
-            return {
-              ...prev,
-              [box.id]: {
-                ...prev[box.id],
-                leftStr: newValue.toString(),
-                intervalHandle,
-              },
-            }
-          }
-        })
-      }, duration * 1000)
-      setState((prev) => {
-        return {
-          ...prev,
-          [box.id]: {
-            ...prev[box.id],
-            intervalHandle: handle,
-          },
-        }
+  useEffect(() => {
+    // console.log('dispatch', lastDispatch.current)
+    if (lastDispatch.current !== 'remoteDataSync') {
+      client.channels.get('dev-lab').publish('dispatch', {
+        clientId,
+        action: lastDispatch.current,
+        state,
       })
-    },
-    stop(box: CalculatorBoxDef) {
-      const intervalHandle = state[box.id].intervalHandle
-      if (intervalHandle !== undefined) {
-        clearInterval(intervalHandle)
-        setState((prev) => {
-          return {
-            ...prev,
-            [box.id]: {
-              ...prev[box.id],
-              intervalHandle: undefined,
-            },
-          }
-        })
-      }
-    },
-    setLeft(id: string, value: string) {
-      setState((prev) => {
-        return {
-          ...prev,
-          [id]: {
-            ...prev[id],
-            leftStr: value,
-          },
-        }
-      })
-    },
-    setRight(id: string, value: string) {
-      setState((prev) => {
-        return {
-          ...prev,
-          [id]: {
-            ...prev[id],
-            rightStr: value,
-          },
-        }
-      })
-    },
-    calculateValue(id: string) {
-      const box = boxes.find((box) => box.id === id)
-      if (!box) {
-        return NaN
-      }
-      const { leftStr, rightStr } = state[id]
-      const left =
-        typeof leftStr === 'string'
-          ? Number(leftStr)
-          : master.calculateValue(leftStr.id)
-      const right =
-        typeof rightStr === 'string'
-          ? Number(rightStr)
-          : master.calculateValue(rightStr.id)
-      return box.calculate(left, right)
-    },
-    calculate(id: string) {
-      const box = boxes.find((box) => box.id === id)
-      if (!box) {
-        return ''
-      }
-      const value = master.calculateValue(id)
-      return box.outputFormatter(value)
+    }
+  }, [state])
+
+  const handler: ProxyHandler<
+    ReturnType<typeof createMasterCalculatorDispatchers>
+  > = {
+    get(target, prop, receiver) {
+      // console.log('get', prop)
+      lastDispatch.current = prop.toString()
+      return Reflect.get(target, prop, receiver)
     },
   }
-  const components = boxes.map((box) => {
-    const boxState = state[box.id]
-    const { leftStr, rightStr } = boxState
 
-    const leftIsBound = typeof leftStr !== 'string'
-    const rightIsBound = typeof rightStr !== 'string'
+  const dispatchersProxy = new Proxy(dispatchers, handler)
 
-    const leftStrVal = leftIsBound
-      ? master.calculateValue(leftStr.id).toString()
-      : leftStr
-
-    const rightStrVal = rightIsBound
-      ? master.calculateValue(rightStr.id).toString()
-      : rightStr
-
-    return (
-      <CalculatorBox
-        master={master}
-        def={box}
-        key={box.id}
-        leftStr={leftStrVal}
-        rightStr={rightStrVal}
-        leftIsBound={leftIsBound}
-        rightIsBound={rightIsBound}
-        playing={boxState.intervalHandle !== undefined}
-      />
-    )
-  })
-
-  return { components }
+  return [state, dispatchersProxy] as const
 }
 
 function App() {
-  const { components } = useMasterCalculator(boxes)
+  // const { components, state } = useMasterCalculator(boxes)
 
-  return <AppContainer>{components}</AppContainer>
+  const [state, dispatchers] = useRemoteDataSync()
+
+  return (
+    <>
+      <AppContainer>
+        {boxes.map((box) => {
+          return (
+            <CalculatorBox
+              dispatchers={dispatchers}
+              box={box}
+              state={state}
+              key={box.id}
+            />
+          )
+        })}
+      </AppContainer>
+      <AblyTest />
+      <pre>{JSON.stringify(state, null, 2)}</pre>
+    </>
+  )
 }
 
 const ContainerWrapper = styled.div`
@@ -404,13 +259,9 @@ export function Container({
 export default App
 
 interface CalculatorBoxProps {
-  master: MasterInterface
-  def: CalculatorBoxDef
-  leftStr: string
-  rightStr: string
-  playing?: boolean
-  leftIsBound?: boolean
-  rightIsBound?: boolean
+  dispatchers: ReturnType<typeof createMasterCalculatorDispatchers>
+  box: CalculatorBoxDef
+  state: MasterCalculatorState
 }
 
 const BindableInput = styled.input<{ $bound?: boolean }>`
@@ -419,12 +270,43 @@ const BindableInput = styled.input<{ $bound?: boolean }>`
 `
 
 export function CalculatorBox(props: CalculatorBoxProps) {
-  const { master, def, leftStr, rightStr, playing } = props
-  const { leftIsBound, rightIsBound } = props
-  const { title, leftName, rightName, midWord, target } = def
+  const { dispatchers, box, state } = props
+  const { title, leftName, rightName, midWord, target } = box
 
-  const result = master.calculate(def.id)
-  const isBound = target && master.outputIsBound(target)
+  const boxState = state.boxes[box.id]
+  const { leftStr, rightStr } = boxState
+
+  const leftIsBound = typeof leftStr !== 'string'
+  const rightIsBound = typeof rightStr !== 'string'
+
+  const leftStrVal = leftIsBound
+    ? calculateValue(leftStr.id, boxes, state).toString()
+    : leftStr
+
+  const rightStrVal = rightIsBound
+    ? calculateValue(rightStr.id, boxes, state).toString()
+    : rightStr
+
+  const result = formatValue(box.id, boxes, state)
+  const isBound = outputIsBound(target, state)
+  const playing = boxState.intervalHandle !== undefined
+
+  const play = () => {
+    const duration = Number(rightStr)
+    const handle = window.setInterval(() => {
+      dispatchers.dec(box.id, 1)
+    }, duration * 1000)
+    dispatchers.playing(box.id, handle)
+  }
+
+  const stop = () => {
+    const handle = boxState.intervalHandle
+    if (handle !== undefined) {
+      clearInterval(handle)
+      // dispatchers.set(box.id, 'intervalHandle', undefined)
+      dispatchers.stopped(box.id)
+    }
+  }
 
   return (
     <Container title={title}>
@@ -432,36 +314,34 @@ export function CalculatorBox(props: CalculatorBoxProps) {
         <BindableInput
           $bound={leftIsBound}
           placeholder={leftName}
-          value={leftStr}
-          onChange={(e) => master.setLeft(def.id, e.target.value)}
+          value={leftStrVal}
+          onChange={(e) => dispatchers.set(box.id, 'leftStr', e.target.value)}
         />
         {` ${midWord} `}
         <BindableInput
           $bound={rightIsBound}
           placeholder={rightName}
-          value={rightStr}
-          onChange={(e) => master.setRight(def.id, e.target.value)}
+          value={rightStrVal}
+          onChange={(e) => dispatchers.set(box.id, 'rightStr', e.target.value)}
         />
-
-        {/* <button onClick={() => timesInput.setValue(times + '')}>→</button> */}
       </div>
       <Result>{result}</Result>
       <ButtonTray>
         {target === undefined ? null : (
           <>
-            <button onClick={() => master.push(def, target)}>Push</button>
-            <button onClick={() => master.bind(def, target)}>
+            <button onClick={() => dispatchers.push(box, target)}>Push</button>
+            <button onClick={() => dispatchers.bind(box, target)}>
               {isBound ? 'Un-bind' : `Bind`}
             </button>{' '}
           </>
         )}
-        {def.canPlay === undefined ? null : playing ? (
+        {box.canPlay === undefined ? null : playing ? (
           <>
-            <button onClick={() => master.stop(def)}>⏸️</button>
-            <Countdown duration={Number(rightStr)} resetValue={leftStr} />
+            <button onClick={() => stop()}>⏸️</button>
+            <Countdown duration={Number(rightStr)} resetValue={leftStrVal} />
           </>
         ) : (
-          <button onClick={() => master.play(def)}>▶️</button>
+          <button onClick={() => play()}>▶️</button>
         )}
       </ButtonTray>
     </Container>
