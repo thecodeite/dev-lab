@@ -8,6 +8,7 @@ interface BoundTo {
 }
 
 export interface MasterCalculatorState {
+  stateId: string
   clientRunningClock: string | null
   boxes: {
     [key: string]: {
@@ -67,7 +68,10 @@ export type MasterCalculatorAction =
       data: MasterCalculatorState
     }
 
-export function createMasterCalculatorState(boxDefs: CalculatorBoxDef[]) {
+export function createMasterCalculatorState(
+  stateId: string,
+  boxDefs: CalculatorBoxDef[]
+) {
   const boxes = boxDefs
     .map((box) => {
       return {
@@ -82,6 +86,7 @@ export function createMasterCalculatorState(boxDefs: CalculatorBoxDef[]) {
     }, {} as Record<string, { leftStr: string; rightStr: string }>)
 
   const initialState: MasterCalculatorState = {
+    stateId,
     clientRunningClock: null,
     boxes,
   }
