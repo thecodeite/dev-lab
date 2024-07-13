@@ -83,7 +83,7 @@ function readFactor(chars: CharStream): number {
     chars.next()
     const expression = readExpression(chars)
     if (chars.next() !== ')') {
-      throw new Error('Invalid close parenthesis')
+      return Number.NaN
     }
     return expression
   } else {
@@ -142,6 +142,6 @@ function readDigitNoZero(chars: CharStream): string {
   if (digit >= '1' && digit <= '9') {
     return digit
   } else {
-    throw new Error('Invalid digit')
+    return 'NaN'
   }
 }
