@@ -9,6 +9,7 @@ import {
   MasterCalculatorState,
   outputIsBound,
 } from './dataMaster'
+import { mathExp } from './math-exp'
 
 export interface CalculatorBoxProps {
   dispatchers: ReturnType<typeof createMasterCalculatorDispatchers>
@@ -90,7 +91,9 @@ export function CalculatorBox(props: CalculatorBoxProps) {
   const playing = boxState.intervalHandle !== undefined
 
   const play = () => {
-    const duration = Number(rightStr)
+    if (typeof rightStr !== 'string')
+      throw new Error('rightStr is not a string')
+    const duration = mathExp(rightStr)
     const handle = window.setInterval(() => {
       dispatchers.dec(box.id, 1)
     }, duration * 1000)

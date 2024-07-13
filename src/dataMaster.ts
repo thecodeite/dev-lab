@@ -1,3 +1,5 @@
+import { mathExp } from './math-exp'
+
 export interface Target {
   id: string
   side: 'leftStr' | 'rightStr'
@@ -187,7 +189,9 @@ export function createMasterCalculatorReducer(boxes: CalculatorBoxDef[]) {
     const { id, value } = action
     const oldValue = state.boxes[id].leftStr
     const mod = boxes.find((box) => box.id === id)?.mod || ((a, b) => a - b)
-    const scale = mod(value, Number(state.boxes[id].rightStr))
+    if (typeof state.boxes[id].rightStr !== 'string')
+      throw new Error('rightStr is not a string')
+    const scale = mod(value, mathExp(state.boxes[id].rightStr))
     console.log(
       `Setting scale to ${scale} by ${value} and ${state.boxes[id].rightStr} using ${mod}`
     )
@@ -196,7 +200,7 @@ export function createMasterCalculatorReducer(boxes: CalculatorBoxDef[]) {
       console.log({ state, id: oldValue.id, scale })
       return dec(state, { n: 'dec', id: oldValue.id, value: scale })
     } else {
-      const newValue = (Number(oldValue) - scale).toString()
+      const newValue = (mathExp(oldValue) - scale).toString()
       console.log(
         `Trying to set ${id}:leftStr to ${newValue} by subtracting ${scale} from ${oldValue}`
       )
@@ -359,11 +363,11 @@ export function calculateValue(
   const { leftStr, rightStr } = state.boxes[id]
   const left =
     typeof leftStr === 'string'
-      ? Number(leftStr)
+      ? mathExp(leftStr)
       : calculateValue(leftStr.id, boxes, state)
   const right =
     typeof rightStr === 'string'
-      ? Number(rightStr)
+      ? mathExp(rightStr)
       : calculateValue(rightStr.id, boxes, state)
   return box.calculate(left, right)
 }
