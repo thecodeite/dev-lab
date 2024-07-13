@@ -189,11 +189,12 @@ export function createMasterCalculatorReducer(boxes: CalculatorBoxDef[]) {
     const { id, value } = action
     const oldValue = state.boxes[id].leftStr
     const mod = boxes.find((box) => box.id === id)?.mod || ((a, b) => a - b)
-    if (typeof state.boxes[id].rightStr !== 'string')
+    const rightStr = state.boxes[id].rightStr
+    if (typeof rightStr !== 'string')
       throw new Error('rightStr is not a string')
-    const scale = mod(value, mathExp(state.boxes[id].rightStr))
+    const scale = mod(value, mathExp(rightStr))
     console.log(
-      `Setting scale to ${scale} by ${value} and ${state.boxes[id].rightStr} using ${mod}`
+      `Setting scale to ${scale} by ${value} and ${rightStr} using ${mod}`
     )
 
     if (typeof oldValue !== 'string') {

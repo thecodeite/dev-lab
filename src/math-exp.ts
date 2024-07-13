@@ -31,7 +31,7 @@ const charStream = (str: string) => {
       return str[index] === '*' || str[index] === '/'
     },
     peekIsInvalid() {
-      return !/[0-9\.\+\-\*\/\(\)]/.test(str[index])
+      return !/[0-9.+\-*/()]/.test(str[index])
     },
     next() {
       return str[index++]
@@ -92,7 +92,7 @@ function readFactor(chars: CharStream): number {
 }
 
 function isValue(char: string): boolean {
-  return /[\d\.\+\-]/.test(char)
+  return /[\d.+-]/.test(char)
 }
 
 // <Value>      ::= {"+"|"-"}(<Int>|<Int>"."<Digit>*)
